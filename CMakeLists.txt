@@ -15,19 +15,23 @@ add_executable(${PROJECT_NAME}
         main.c
         msc_disk.c
         usb_descriptors.c
-        Nokia5110/Nokia5110.c
+#        Nokia5110/Nokia5110.c
+        ssd1306/ssd1306.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
 target_link_libraries(${PROJECT_NAME} 
         PRIVATE 
-        pico_stdlib 
+        pico_stdlib
+        pico_multicore
+#        pico_bootsel_via_double_reset
         tinyusb_device 
         tinyusb_board
         hardware_gpio
         hardware_spi
         hardware_adc
+        hardware_i2c
 )
 pico_add_extra_outputs(${PROJECT_NAME})
 

@@ -30,13 +30,16 @@
 #include "bsp/board.h"
 #include "tusb.h"
 #include "pico/stdlib.h"
+#include "pico/binary_info.h"
+#include "pico/multicore.h"
 
 #include "usb_descriptors.h"
 
 #include "hardware/gpio.h"
 #include "hardware/adc.h"
 #include "hardware/spi.h"
-#include "Nokia5110/Nokia5110.h"
+#include "hardware/i2c.h"
+#include "ssd1306/ssd1306.h"
 #include "Nokia5110/stencil.h"
 
 //--------------------------------------------------------------------+
@@ -45,14 +48,13 @@
 
 #define SPI_PORT spi0
 
-#define LCD_CS   17
-#define LCD_SCK  18
-#define LCD_MOSI 19
-#define LCD_RST  21
-#define LCD_DC   20
+#define LCD_SCL  2
+#define LCD_SDA  3
+#define LCD_ADDRESS 0x3D
+#define LCD_WIDTH 128
+#define LCD_HEIGHT 64
 
 #define SWITCH_PIN 28
-#define BACKLIGHT 16
 #define BUTTON1 1
 
 /* Blink pattern
@@ -66,10 +68,39 @@ enum {
     BLINK_SUSPENDED = 2500,
 };
 
+const uint8_t temperature_32x32[] = {
+        0x00, 0x00, 0x00, 0x00, 0x07, 0xC0, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x18,
+        0x04, 0x20, 0x00, 0x18, 0x04, 0x38, 0x00, 0x3C, 0x04, 0x20, 0x00, 0x24,
+        0x04, 0x30, 0x00, 0x66, 0x04, 0x30, 0x00, 0x24, 0x04, 0x20, 0x00, 0x3C,
+        0x05, 0xB8, 0x00, 0x00, 0x05, 0xA0, 0x06, 0x00, 0x05, 0xA0, 0x0E, 0x00,
+        0x05, 0xB0, 0x0B, 0x00, 0x05, 0xA0, 0x19, 0x00, 0x05, 0xB8, 0x11, 0x80,
+        0x05, 0xA0, 0x11, 0x80, 0x05, 0xA0, 0x1B, 0x00, 0x0D, 0xA0, 0x0E, 0x00,
+        0x19, 0xB8, 0x00, 0x18, 0x31, 0x8C, 0x00, 0x18, 0x21, 0x84, 0x00, 0x24,
+        0x67, 0xC6, 0x00, 0x66, 0x47, 0xE2, 0x00, 0x42, 0x47, 0xE2, 0x00, 0x42,
+        0x47, 0xE2, 0x00, 0x42, 0x47, 0xC6, 0x00, 0x7E, 0x61, 0x84, 0x00, 0x18,
+        0x30, 0x0C, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x0F, 0xF0, 0x00, 0x00,
+        0x01, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+const uint8_t pressure_40x32[] = {
+        0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x07,
+        0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0xC0, 0x00, 0x0C, 0x07, 0x01, 0xC0,
+        0x00, 0x1E, 0x03, 0x03, 0xC0, 0x00, 0x0F, 0x00, 0x07, 0x80, 0x00, 0x07,
+        0x00, 0x07, 0x00, 0x00, 0x03, 0x1F, 0xC0, 0x00, 0x00, 0x00, 0x3F, 0xF0,
+        0x00, 0x00, 0x00, 0x7F, 0xF8, 0x00, 0x00, 0x00, 0xF0, 0x7F, 0xF8, 0x00,
+        0x00, 0xE0, 0x3F, 0xFC, 0x00, 0x01, 0xC0, 0x3F, 0xFE, 0x00, 0x79, 0xC0,
+        0x3C, 0x0F, 0x00, 0xFD, 0xC0, 0x38, 0x07, 0x80, 0x7D, 0xC0, 0x70, 0x03,
+        0x80, 0x01, 0xC1, 0xF0, 0x03, 0x80, 0x00, 0xE3, 0xF0, 0x01, 0x80, 0x00,
+        0xFF, 0xE0, 0x01, 0xC0, 0x00, 0x7F, 0xC0, 0x01, 0xF0, 0x00, 0xF0, 0x00,
+        0x00, 0xF8, 0x00, 0xE0, 0x00, 0x00, 0x3C, 0x00, 0xE0, 0x00, 0x00, 0x1C,
+        0x00, 0xE0, 0x00, 0x00, 0x0E, 0x00, 0xE0, 0x00, 0x00, 0x0E, 0x00, 0xE0,
+        0x00, 0x00, 0x0E, 0x00, 0xE0, 0x00, 0x00, 0x0E, 0x00, 0x70, 0x00, 0x00,
+        0x1C, 0x00, 0x7F, 0xFF, 0xFF, 0xFC, 0x00, 0x3F, 0xFF, 0xFF, 0xF8, 0x00,
+        0x0F, 0xFF, 0xFF, 0xE0,
+};
 
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 static float conversion_factor = (3.3f / (1 << 12));
-static uint16_t LCD_REFRESH = 500;
+static uint16_t LCD_REFRESH = 250;
 
 void led_blinking_task(void);
 
@@ -79,7 +110,23 @@ float calculate_temperature(void);
 
 void draw_display_task(void);
 
+bool isDeviceAvailable(u_int8_t address);
+
+bool isDeviceAvailable(u_int8_t address) {
+    int ret;
+    uint8_t rxdata;
+    switch (i2c_read_blocking(i2c1, address, &rxdata, 1, false)) {
+        case PICO_ERROR_GENERIC:
+            return false;
+        case PICO_ERROR_TIMEOUT:
+            return false;
+        default:
+            return true;
+    }
+}
+
 int current_os = '0';
+ssd1306_t disp;
 
 uint8_t read_switch_value() {
     return gpio_get(SWITCH_PIN) ? '1' : '0';
@@ -91,7 +138,6 @@ uint8_t button_read() {
 
 /*------------- MAIN -------------*/
 int main(void) {
-
     gpio_init(SWITCH_PIN);
     gpio_set_dir(SWITCH_PIN, false);
     gpio_set_pulls(SWITCH_PIN, false, true);
@@ -105,21 +151,14 @@ int main(void) {
     adc_set_temp_sensor_enabled(true);
     adc_select_input(4);
 
-    spi_init(SPI_PORT, 4000 * 1000);
-
-    gpio_set_function(LCD_SCK, GPIO_FUNC_SPI);
-    gpio_set_function(LCD_MOSI, GPIO_FUNC_SPI);
-
-    gpio_init(LCD_RST);
-    gpio_set_dir(LCD_RST, GPIO_OUT);
-    gpio_init(LCD_CS);
-    gpio_set_dir(LCD_CS, GPIO_OUT);
-    gpio_init(LCD_DC);
-    gpio_set_dir(LCD_DC, GPIO_OUT);
-    gpio_init(BACKLIGHT);
-    gpio_set_dir(BACKLIGHT, GPIO_OUT);
-    gpio_put(BACKLIGHT, 0);
-    Nokia5110_Init();
+    i2c_init(i2c1, 400000);
+    gpio_set_function(LCD_SCL, GPIO_FUNC_I2C);
+    gpio_set_function(LCD_SDA, GPIO_FUNC_I2C);
+    gpio_pull_up(LCD_SCL);
+    gpio_pull_up(LCD_SDA);
+    disp.external_vcc = false;
+    ssd1306_init(&disp, LCD_WIDTH, LCD_HEIGHT, LCD_ADDRESS, i2c1);
+    ssd1306_clear(&disp);
 
     board_init();
     tusb_init();
@@ -366,38 +405,24 @@ void led_blinking_task(void) {
     led_state = 1 - led_state; // toggle
 }
 
+
 void draw_display_task(void) {
 
     static uint32_t start_ms = 0;
 
     // Blink every interval ms
     if (board_millis() - start_ms < LCD_REFRESH) return; // not enough time
+
+    if (isDeviceAvailable(LCD_ADDRESS)){
+        ssd1306_clear(&disp);
+        ssd1306_draw_string(&disp, 0, 0, 1, "Connected");
+        ssd1306_show(&disp);
+    }
     start_ms += LCD_REFRESH;
-    clearDisplay();
-    drawBitmap(0, 0, stencil_1, 83, 47, BLACK);
-    setCursor(1, 2);
-    setTextSize(1);
-    printString("Temp:");
-    setCursor(33, 2);
-    char numStr[16];
-    float temperature = calculate_temperature();
-    sprintf(numStr, "%.*f", 2, temperature);
-    printString(numStr);
-    setCursor(1, 14);
-    printString("Cfg Os:");
-    setCursor(45, 14);
-    printString(current_os == '0' ? "UBUNTU" : "Win-10");
-    setCursor(1, 26);
-    printString("NextOs:");
-    setCursor(45, 26);
-    printString(read_switch_value() == '0' ? "UBUNTU" : "Win-10");
-    setCursor(1, 38);
-    printString("Status:");
-    drawBitmap(42, 36,
-               blink_interval_ms == BLINK_NOT_MOUNTED ? UNMOUNTED : blink_interval_ms == BLINK_SUSPENDED ? SUSPENDED
-                                                                                                         : MOUNTED, 41,
-               11, BLACK);
-    display();
+//    ssd1306_draw_string(&disp, 0, 0, 1, "5");
+//    ssd1306_bmp_show_image_with_offset(
+//            &disp, blink_interval_ms == BLINK_NOT_MOUNTED ? UNMOUNTED : blink_interval_ms == BLINK_SUSPENDED ? SUSPENDED : MOUNTED, 66, 12, 10);
+
 }
 
 

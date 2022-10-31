@@ -73,3 +73,9 @@ else
 fi
 
 ```
+
+## TODO:
+- Read current System temperature by CDC
+- Use multicore approach for reading pc info
+- Use [OpenHardwareMonitor](http://openhardwaremonitor.org/) for reading System info.
+- Update this Readme.md
