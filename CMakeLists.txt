@@ -15,6 +15,7 @@ add_executable(${PROJECT_NAME}
         main.c
         msc_disk.c
         usb_descriptors.c
+        Nokia5110/Nokia5110.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
@@ -24,6 +25,9 @@ target_link_libraries(${PROJECT_NAME}
         pico_stdlib 
         tinyusb_device 
         tinyusb_board
+        hardware_gpio
+        hardware_spi
+        hardware_adc
 )
 pico_add_extra_outputs(${PROJECT_NAME})
 
