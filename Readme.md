@@ -3,7 +3,7 @@
 Inspired by Hackaday.io project(https://hackaday.io/project/179539-hardware-boot-selection-switch) and forked
 from [here](https://github.com/MadRajib/hardware_boot_selection_switch).
 
-This project uses the [Nokia 5110](https://github.com/viduraembedded/Raspberry-Pi-Pico/Nokia5110) library for LCD
+This project uses the [SSD1306](https://github.com/daschr/pico-ssd1306) library for LCD
 graphics, [TinyUSB](tinyusb.org) for MSC, CDC and HID usb configuration. And It works only if you have A linux OS or
 GRUB.
 
