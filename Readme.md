@@ -79,3 +79,4 @@ fi
 - Use multicore approach for reading pc info
 - Use [OpenHardwareMonitor](http://openhardwaremonitor.org/)[.](https://github.com/openhardwaremonitor) for reading System info.
 - Update this Readme.md
+- Solve when I2C device fails, main process crashes.
