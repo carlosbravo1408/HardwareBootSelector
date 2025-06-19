@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -35,7 +35,16 @@
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
 
-#define SWITCH_PIN 28
+// Rotary Dial Switch 10 Positions RM3HAF-10R Definition
+#define BIN_SWITCH_COM_0 6
+#define BIN_SWITCH_COM_1 26
+#define BIN_SWITCH_1 15
+#define BIN_SWITCH_2 5
+#define BIN_SWITCH_4 27
+#define BIN_SWITCH_8 7
+
+// maximum number of operating systems, in case you have multiple images in your grub to boot
+#define SO_MAX_NUM 3
 
 /* Blink pattern
  * - 250 ms  : device not mounted
@@ -55,28 +64,45 @@ void led_blinking_task(void);
 void cdc_task(void);
 
 uint8_t read_switch_value()
-{  
-  return gpio_get(SWITCH_PIN) ? '1' : '0';
+{
+  uint8_t bit_1 = (uint8_t)(gpio_get(BIN_SWITCH_1) ? 0 : 1);
+  uint8_t bit_2 = (uint8_t)(gpio_get(BIN_SWITCH_2) ? 0 : 2);
+  uint8_t bit_4 = (uint8_t)(gpio_get(BIN_SWITCH_4) ? 0 : 4);
+  uint8_t bit_8 = (uint8_t)(gpio_get(BIN_SWITCH_8) ? 0 : 8);
+  uint8_t sum = bit_1 + bit_2 + bit_4 + bit_8;
+  if (SO_MAX_NUM <= 1) sum = 0;
+  sum = (sum % SO_MAX_NUM);
+  return (uint8_t)(48 + sum);
 }
 
 /*------------- MAIN -------------*/
+void configure_gpio(uint pin)
+{
+  gpio_init(pin);                 // Inicializa el GPIO
+  gpio_set_dir(pin, GPIO_IN);      // Configura como entrada
+  gpio_pull_up(pin);               // Activa la resistencia pull-up interna
+}
+
 int main(void)
 {
+  configure_gpio(BIN_SWITCH_1);
+  configure_gpio(BIN_SWITCH_2);
+  configure_gpio(BIN_SWITCH_4);
+  configure_gpio(BIN_SWITCH_8);
+  gpio_init(BIN_SWITCH_COM_0);
+  gpio_init(BIN_SWITCH_COM_1);
+  gpio_set_dir(BIN_SWITCH_COM_0, GPIO_OUT);
+  gpio_set_dir(BIN_SWITCH_COM_1, GPIO_OUT);
+  gpio_put(BIN_SWITCH_COM_0, 0);
+  gpio_put(BIN_SWITCH_COM_1, 0);
 
-  gpio_init(SWITCH_PIN);
-	gpio_set_dir(SWITCH_PIN, false);
-  gpio_set_pulls (SWITCH_PIN,false,true);
-  
-  
   board_init();
   tusb_init();
-  
 
   while (1)
   {
     tud_task(); // tinyusb device task
     led_blinking_task();
-
     cdc_task();
   }
 
